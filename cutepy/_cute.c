@@ -48,7 +48,6 @@ static PyObject *xcorr(PyObject *dummy, PyObject *args)
     int ngals1, ngals2, nrands1, nrands2;
     int pi_max, r_p_nbins, ndecades;
     double r_p_max, O_M, O_L;
-    double **result;
 
     PyArray_Descr *dtype;
     PyObject *data1, *data2, *rand1, *rand2;
@@ -94,6 +93,7 @@ static PyObject *xcorr(PyObject *dummy, PyObject *args)
         return NULL;
     }
 
+    double *dat1_data = (double *) PyArray_DATA(dat1arr);
     ra1 = (double *)malloc(ngals1 * sizeof(double));
     dec1 = (double *)malloc(ngals1 * sizeof(double));
     z1 = (double *)malloc(ngals1 * sizeof(double));
@@ -101,17 +101,18 @@ static PyObject *xcorr(PyObject *dummy, PyObject *args)
     int k = 0;
     for (i = 0; i < 4 * ngals1; i++) {
         if (i % 4 == 0)
-            ra1[k] = dat1arr[i];
+            ra1[k] = dat1_data[i];
         else if (i % 4 == 1)
-            dec1[k] = dat1arr[i];
+            dec1[k] = dat1_data[i];
         else if (i % 4 == 2)
-            z1[k] = dat1arr[i];
+            z1[k] = dat1_data[i];
         else {
-            w1[k] = dat1arr[i];
+            w1[k] = dat1_data[i];
             k++;
         }
     }
 
+    double *dat2_data = (double *) PyArray_DATA(dat2arr);
     ra2 = (double *)malloc(ngals2 * sizeof(double));
     dec2 = (double *)malloc(ngals2 * sizeof(double));
     z2 = (double *)malloc(ngals2 * sizeof(double));
@@ -119,17 +120,18 @@ static PyObject *xcorr(PyObject *dummy, PyObject *args)
     k = 0;
     for (i = 0; i < 4 * ngals2; i++) {
         if (i % 4 == 0)
-            ra2[k] = dat2arr[i];
+            ra2[k] = dat2_data[i];
         else if (i % 4 == 1)
-            dec2[k] = dat2arr[i];
+            dec2[k] = dat2_data[i];
         else if (i % 4 == 2)
-            z2[k] = dat2arr[i];
+            z2[k] = dat2_data[i];
         else {
-            w2[k] = dat2arr[i];
+            w2[k] = dat2_data[i];
             k++;
         }
     }
 
+    double *ran1_data = (double *) PyArray_DATA(ran1arr);
     randra1 = (double *)malloc(nrands1 * sizeof(double));
     randec1 = (double *)malloc(nrands1 * sizeof(double));
     ranz1 = (double *)malloc(nrands1 * sizeof(double));
@@ -137,17 +139,18 @@ static PyObject *xcorr(PyObject *dummy, PyObject *args)
     k = 0;
     for (i = 0; i < 4 * nrands1; i++) {
         if (i % 4 == 0)
-            randra1[k] = ran1arr[i];
+            randra1[k] = ran1_data[i];
         else if (i % 4 == 1)
-            randec1[k] = ran1arr[i];
+            randec1[k] = ran1_data[i];
         else if (i % 4 == 2)
-            ranz1[k] = ran1arr[i];
+            ranz1[k] = ran1_data[i];
         else {
-            ranw1[k] = ran1arr[i];
+            ranw1[k] = ran1_data[i];
             k++;
         }
     }
 
+    double *ran2_data = (double *) PyArray_DATA(ran2arr);
     randra2 = (double *)malloc(nrands2 * sizeof(double));
     randec2 = (double *)malloc(nrands2 * sizeof(double));
     ranz2 = (double *)malloc(nrands2 * sizeof(double));
@@ -155,24 +158,36 @@ static PyObject *xcorr(PyObject *dummy, PyObject *args)
     k = 0;
     for (i = 0; i < 4 * nrands2; i++) {
         if (i % 4 == 0)
-            randra2[k] = ran2arr[i];
+            randra2[k] = ran2_data[i];
         else if (i % 4 == 1)
-            randec2[k] = ran2arr[i];
+            randec2[k] = ran2_data[i];
         else if (i % 4 == 2)
-            ranz2[k] = ran2arr[i];
+            ranz2[k] = ran2_data[i];
         else {
-            ranw2[k] = ran2arr[i];
+            ranw2[k] = ran2_data[i];
             k++;
         }
     }
 
+    double *result = (double *)malloc(r_p_nbins * pi_max * 4 * sizeof(double));
 
     // And let's run this motha
-    result = runfull_xcorr(ngals1, ra1, dec1, z1, w1,
-                           ngals2, ra2, dec2, z2, w2,
-                           nrands1, randra1, randec1, ranz1, ranw1,
-                           nrands2, randra2, randec2, ranz2, ranw2,
-                           r_p_max, pi_max, r_p_nbins, ndecades,
-                           O_M, O_L);
+    runfull_xcorr(result, ngals1, ra1, dec1, z1, w1,
+                          ngals2, ra2, dec2, z2, w2,
+                          nrands1, randra1, randec1, ranz1, ranw1,
+                          nrands2, randra2, randec2, ranz2, ranw2,
+                          r_p_max, pi_max, r_p_nbins, ndecades,
+                          O_M, O_L);
 
+    Py_DECREF(dat1arr);
+    Py_DECREF(dat2arr);
+    Py_DECREF(ran1arr);
+    Py_DECREF(ran2arr);
+
+    npy_intp dims[2];
+    dims[0] = r_p_nbins * pi_max;
+    dims[1] = 4;
+    PyObject *retobj = PyArray_SimpleNewFromData(2, dims, NPY_DOUBLE,
+                                                 result);
+    return retobj;
 }
