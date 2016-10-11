@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include "Python.h"
-#DEFINE NPY_NO_DEPRECATED_API NPY_1_11_API_VERSION
 #include <numpy/arrayobject.h>
 #include "cute.h"
 
@@ -29,7 +28,7 @@ static PyMethodDef mymethods[] = {
 
 PyMODINIT_FUNC init_cute(void)
 {
-    PyObject *m = Py_InitModule("_cute", mymethods, module_docstring);
+    PyObject *m = Py_InitModule("_cute", mymethods);
 
     if (m == NULL)
         return;
@@ -51,8 +50,9 @@ static PyObject *xcorr(PyObject *dummy, PyObject *args)
 
     PyArray_Descr *dtype;
     PyObject *data1, *data2, *rand1, *rand2;
+    npy_intp *shapeX;
 
-    if (!PyArg_ParseTuple(args, "OOOOdiiidd&",
+    if (!PyArg_ParseTuple(args, "OOOOdiiidd",
                           &data1, &data2, &rand1, &rand2,
                           &r_p_max, &pi_max, &r_p_nbins, &ndecades,
                           &O_M, &O_L))
@@ -67,23 +67,29 @@ static PyObject *xcorr(PyObject *dummy, PyObject *args)
     // Now to grab all the arrays and get the galaxy numbers
     // and pass the columns to their designated pointers.
     PyArrayObject *dat1arr, *dat2arr, *ran1arr, *ran2arr;
-    ngals1 = PyArray_SHAPE(data1)[0];
-    ra1 = (double *)
     dat1arr = (PyArrayObject *) PyArray_FROM_OTF(data1,
                                                  NPY_DOUBLE,
                                                  NPY_ARRAY_IN_ARRAY);
-    ngals2 = PyArray_SHAPE(data2)[0];
+    shapeX = PyArray_SHAPE(dat1arr);
+    ngals1 = shapeX[0];
+
     dat2arr = (PyArrayObject *) PyArray_FROM_OTF(data2,
                                                  NPY_DOUBLE,
                                                  NPY_ARRAY_IN_ARRAY);
-    nrands1 = PyArray_SHAPE(rand1)[0];
+    shapeX = PyArray_SHAPE(dat2arr);
+    ngals2 = shapeX[0];
+
     ran1arr = (PyArrayObject *) PyArray_FROM_OTF(rand1,
                                                  NPY_DOUBLE,
                                                  NPY_ARRAY_IN_ARRAY);
-    nrands2 = PyArray_SHAPE(rand2)[0];
+    shapeX = PyArray_SHAPE(ran1arr);
+    nrands1 = shapeX[0];
+
     ran2arr = (PyArrayObject *) PyArray_FROM_OTF(rand2,
                                                  NPY_DOUBLE,
                                                  NPY_ARRAY_IN_ARRAY);
+    shapeX = PyArray_SHAPE(ran2arr);
+    nrands2 = shapeX[0];
 
     if(dat1arr == NULL | dat2arr == NULL | ran1arr == NULL | ran2arr == NULL) {
         Py_XDECREF(dat1arr);
@@ -98,6 +104,7 @@ static PyObject *xcorr(PyObject *dummy, PyObject *args)
     dec1 = (double *)malloc(ngals1 * sizeof(double));
     z1 = (double *)malloc(ngals1 * sizeof(double));
     w1 = (double *)malloc(ngals1 * sizeof(double));
+    int i;
     int k = 0;
     for (i = 0; i < 4 * ngals1; i++) {
         if (i % 4 == 0)

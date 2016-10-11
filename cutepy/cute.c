@@ -9,6 +9,115 @@
 #include "cute.h"
 
 
+typedef struct {
+  double dim1_max;
+  int dim1_nbin;
+  double dim2_max;
+  int dim2_nbin;
+  double dim3_min;
+  double dim3_max;
+  int dim3_nbin;
+  int logbin;
+  int n_logint;
+} Binner;
+
+
+void process_binner(Binner binner)
+{
+  //////
+  // Check that binning options make sense
+  if(binner.logbin<0) {
+    fprintf(stderr,"CUTE: logarithmic binning option not provided\n");
+    exit(1);
+  }
+  if(binner.logbin) {
+    if(binner.n_logint<0) {
+      fprintf(stderr,"CUTE: logarithmic binning option not provided\n");
+      exit(1);
+    }
+  }
+  if(binner.dim1_nbin<=0) {
+    fprintf(stderr,"CUTE: wrong #bins for dim1 %d\n",binner.dim1_nbin);
+    exit(1);
+  }
+  if(binner.dim2_nbin<=0) {
+    fprintf(stderr,"CUTE: wrong #bins for dim2 %d\n",binner.dim2_nbin);
+    exit(1);
+  }
+  if(binner.dim3_nbin<=0) {
+    fprintf(stderr,"CUTE: wrong #bins for dim3 %d\n",binner.dim3_nbin);
+    exit(1);
+  }
+  if(binner.dim1_max<=0) {
+    fprintf(stderr,"CUTE: wrong dim1_max %lf\n",binner.dim1_max);
+    exit(1);
+  }
+  if(binner.dim2_max<=0) {
+    fprintf(stderr,"CUTE: wrong dim2_max %lf\n",binner.dim2_max);
+    exit(1);
+  }
+  if((binner.dim3_max<=0)||(binner.dim3_min<0)||
+     (binner.dim3_max<=binner.dim3_min)) {
+    fprintf(stderr,"CUTE: wrong boundaries for dim3 (%lf , %lf)\n",
+	    binner.dim3_min,binner.dim3_max);
+    exit(1);
+  }
+
+  logbin=binner.logbin;
+  n_logint=binner.n_logint;
+  if(corr_type==0) {
+    nb_dz=binner.dim1_nbin;
+    i_dz_max=1./binner.dim1_max;
+  }
+  else  if(corr_type==1) {
+    nb_theta=binner.dim1_nbin;
+    i_theta_max=1./(DTORAD*binner.dim1_max);
+    log_th_max=log10(DTORAD*binner.dim1_max);
+  }
+  else if(corr_type==2) {
+    nb_r=binner.dim1_nbin;
+    i_r_max=1./binner.dim1_max;
+    log_r_max=log10(binner.dim1_max);
+  }
+  else if((corr_type==3)||(corr_type==8)||(corr_type==9)) {
+    nb_rl=binner.dim2_nbin;
+    i_rl_max=1./binner.dim2_max;
+    nb_rt=binner.dim1_nbin;
+    i_rt_max=1./binner.dim1_max;
+    if(logbin)
+      log_rt_max=log10(binner.dim1_max);
+  }
+  else if(corr_type==4) {
+    nb_r=binner.dim1_nbin;
+    i_r_max=1./binner.dim1_max;
+    log_r_max=log10(binner.dim1_max);
+    nb_mu=binner.dim2_nbin;
+  }
+  else if(corr_type==5) {
+    nb_theta=binner.dim1_nbin;
+    i_theta_max=1./(DTORAD*binner.dim1_max);
+    log_th_max=log10(DTORAD*binner.dim1_max);
+    nb_dz=binner.dim2_nbin;
+    i_dz_max=1./binner.dim2_max;
+    nb_red=binner.dim3_nbin;
+    i_red_interval=1./(binner.dim3_max-binner.dim3_min);
+    red_0=binner.dim3_min;
+  }
+  else if(corr_type==6) {
+    nb_theta=binner.dim1_nbin;
+    i_theta_max=1./(DTORAD*binner.dim1_max);
+    log_th_max=log10(DTORAD*binner.dim1_max);
+    nb_red=binner.dim3_nbin;
+    i_red_interval=1./(binner.dim3_max-binner.dim3_min);
+    red_0=binner.dim3_min;
+  }
+  else {
+    fprintf(stderr,"WTF!?\n");
+    exit(1);
+  }
+}
+
+
 Catalog make_cat(double *ras, double *decs, double *zs, double *ws,
                  int ngals, np_t *sum_w, np_t *sum_w2) {
     /*
@@ -48,11 +157,13 @@ Catalog make_cat(double *ras, double *decs, double *zs, double *ws,
       phi=DTORAD*decs[ii];
       phi=wrap_phi(phi);
 
+      weight = ws[ii];
+
       cat.red[ii]=zz;
       cat.cth[ii]=cth;
       cat.phi[ii]=phi;
 #ifdef _WITH_WEIGHTS
-      cat.weight[ii]=ws[ii];
+      cat.weight[ii]=weight;
       (*sum_w)+=weight;
       (*sum_w2)+=weight*weight;
 #else //_WITH_WEIGHTS
@@ -109,9 +220,9 @@ void make_CF_cross(histo_t D1D2,histo_t D1R2,
 }
 
 void runfull_xcorr(double *output, int ngal1,
-                   double *ra1, double *dec1, double *z1, double *w1
+                   double *ra1, double *dec1, double *z1, double *w1,
                    int ngal2,
-                   double *ra2, double *dec2, double *z2, double *w2
+                   double *ra2, double *dec2, double *z2, double *w2,
                    int nrands1,
                    double *randr1, double *randec1, double *randz1, double *randw1,
                    int nrands2,
@@ -131,7 +242,7 @@ void runfull_xcorr(double *output, int ngal1,
 
     // set the cosmology from given values
     omega_M = O_M;
-    omega_L = O_L
+    omega_L = O_L;
 
     // CUTE variables that we need for the calculation
     np_t sum_wd,sum_wd2,sum_wr,sum_wr2,sum_wd_2,sum_wd2_2,sum_wr_2,sum_wr2_2;
@@ -170,14 +281,14 @@ void runfull_xcorr(double *output, int ngal1,
     set_r_z();
 
     // Now to create CUTE catalogues with the arrays
-    cat_dat_1 = make_cat(&ra1, &dec1, &z1, &w1, ngal1,
-                         &sum_wd, &sum_wd_2)
-    cat_dat_2 = make_cat(&ra2, &dec2, &z2, &w2, ngal2,
-                         &sum_wd2, &sum_wd2_2)
-    cat_ran_1 = make_cat(&randr1, &randec1, &randz1, &randw1, nrands1,
-                         &sum_wr, &sum_wr_2)
-    cat_ran_2 = make_cat(&randr2, &randec2, &randz2, &randw2, nrands2,
-                         &sum_wr2, &sum_wr2_2)
+    cat_dat_1 = make_cat(ra1, dec1, z1, w1, ngal1,
+                         &sum_wd, &sum_wd_2);
+    cat_dat_2 = make_cat(ra2, dec2, z2, w2, ngal2,
+                         &sum_wd2, &sum_wd2_2);
+    cat_ran_1 = make_cat(randr1, randec1, randz1, randw1, nrands1,
+                         &sum_wr, &sum_wr_2);
+    cat_ran_2 = make_cat(randr2, randec2, randz2, randw2, nrands2,
+                         &sum_wr2, &sum_wr2_2);
 
     // set up the boxes for pair-counting
     init_3D_params_cross(cat_dat_1,cat_ran_1,cat_dat_2,cat_ran_2,3);
@@ -237,8 +348,7 @@ void runfull_xcorr(double *output, int ngal1,
     int ii;
     for(ii=0;ii<nb_rt;ii++) {
       int jj;
-      double rt=(ii+0.5)/(nb_rt*i_rt_max);
-      rt=pow(10,((ii+0.5)-nb_rt)/n_logint+log_rt_max);
+      double rt=pow(10,((ii+0.5)-nb_rt)/n_logint+log_rt_max);
       for(jj=0;jj<nb_rl;jj++) {
         double corr,ercorr;
         double rl=(jj+0.5)/(nb_rl*i_rl_max);
@@ -247,7 +357,10 @@ void runfull_xcorr(double *output, int ngal1,
                       sum_wd,sum_wd2,sum_wr,sum_wr2,
                       sum_wd_2,sum_wd2_2,sum_wr_2,sum_wr2_2,
                       &corr,&ercorr);
-        output[ii * pi_max + jj] = {rl, rt, corr, ercorr}
+        output[4 * (ii * pi_max + jj)] = rl;
+        output[4 * (ii * pi_max + jj) + 1] = rt;
+        output[4 * (ii * pi_max + jj) + 2] = corr;
+        output[4 * (ii * pi_max + jj) + 3] = ercorr;
       }
     }
 
