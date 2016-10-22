@@ -229,7 +229,7 @@ void runfull_xcorr(double *output, int ngal1,
                    double *randr2, double *randec2, double *randz2, double *randw2,
                    double r_p_max, int pi_max,
                    int r_p_nbins, int ndecades,
-                   double O_M, double O_L) {
+                   int logtrue, double O_M, double O_L) {
     /*
      * This computes xi(r_p, pi) for two data sets with two
      * sets of random points. It does so using a modified version
@@ -243,6 +243,8 @@ void runfull_xcorr(double *output, int ngal1,
     // set the cosmology from given values
     omega_M = O_M;
     omega_L = O_L;
+    corr_type = 9;
+    nb_r = 0;
 
     // CUTE variables that we need for the calculation
     np_t sum_wd,sum_wd2,sum_wr,sum_wr2,sum_wd_2,sum_wd2_2,sum_wr_2,sum_wr2_2;
@@ -257,7 +259,7 @@ void runfull_xcorr(double *output, int ngal1,
 
     // Set up a binner object
     Binner binner;
-    binner.logbin = 1;
+    binner.logbin = logtrue;
     binner.n_logint = r_p_nbins / ndecades;
     binner.dim1_nbin = r_p_nbins;
     binner.dim2_nbin = pi_max;
@@ -380,4 +382,193 @@ void runfull_xcorr(double *output, int ngal1,
     free(R1R2);
 
     // ...and return the arrays
+}
+
+void run_auto_3d_ps(double *output, int ngals,
+                     double *ra, double *dec, double *z, double *w,
+                     double r_p_max, int pi_max,
+                     int r_p_nbins, int ndecades,
+                     int logtrue, double O_M, double O_L) {
+
+    // set the cosmology from given values
+    omega_M = O_M;
+    omega_L = O_L;
+    corr_type = 9;
+    nb_r=0;
+
+    // CUTE variables that we need for the calculation
+    np_t sum_wd,sum_wd_2;
+    Catalog cat_dat;
+
+    Box3D *boxes_dat;
+    int *indices_dat;
+    int nfull_dat;
+
+    // assume that pi_max is a whole number and we take 1 Mpc bins
+
+    // Set up a binner object
+    Binner binner;
+    binner.logbin = logtrue;
+    binner.n_logint = r_p_nbins / ndecades;
+    printf("number of logbins is: %d\n", binner.n_logint);
+    binner.dim1_nbin = r_p_nbins;
+    binner.dim2_nbin = pi_max;
+    binner.dim3_nbin = 1;
+    binner.dim1_max = r_p_max;
+    binner.dim2_max = pi_max;
+    binner.dim3_min = 0.08;
+    binner.dim3_max = 0.45;  // this is a dummy bin
+
+    // consistency check and setting more variables
+    process_binner(binner);
+
+    // Set up the histograms for the measurements.
+    histo_t *DD=(histo_t *)my_calloc(nb_rt*nb_rl,sizeof(histo_t));
+
+    timer(4);
+
+    set_r_z();
+
+    // Now to create CUTE catalogues with the arrays
+    cat_dat = make_cat(ra, dec, z, w, ngals,
+                       &sum_wd, &sum_wd_2);
+
+    // set up the boxes for pair-counting
+    printf("*** Boxing catalogs \n");
+    init_3D_params(cat_dat,cat_dat,3);
+    boxes_dat=mk_Boxes3D_from_Catalog(cat_dat,&indices_dat,&nfull_dat);
+
+    // Where the meat of the crunching happens.
+    // This is the same code as my original edit of CUTE.
+    printf("\n");
+
+    printf(" - Auto-correlating\n");
+    timer(0);
+
+    auto_3d_ps_bf(nfull_dat,indices_dat,boxes_dat,DD);
+    timer(1);
+
+    // Fill the output array that the python wrapper gets.
+    // (write_CF used to be called here)
+    int ii;
+    for(ii=0;ii<nb_rt;ii++) {
+      int jj;
+      double rt=pow(10,((ii+0.5)-nb_rt)/n_logint+log_rt_max);
+      for(jj=0;jj<nb_rl;jj++) {
+        double rl=(jj+0.5)/(nb_rl*i_rl_max);
+        int ind=jj+nb_rl*ii;
+        output[3 * (ii * pi_max + jj)] = rl;
+        output[3 * (ii * pi_max + jj) + 1] = rt;
+        output[3 * (ii * pi_max + jj) + 2] = DD[ind];
+      }
+    }
+
+    printf("*** Cleaning up\n");
+    free_Catalog(cat_dat);
+    free_Boxes3D(n_boxes3D,boxes_dat);
+    free(indices_dat);
+    end_r_z();
+    free(DD);
+}
+
+
+void run_cross_3d_ps(double *output, int ngal1,
+                     double *ra1, double *dec1, double *z1, double *w1,
+                     int ngal2,
+                     double *ra2, double *dec2, double *z2, double *w2,
+                     double r_p_max, int pi_max,
+                     int r_p_nbins, int ndecades,
+                     int logtrue, double O_M, double O_L) {
+
+    // set the cosmology from given values
+    omega_M = O_M;
+    omega_L = O_L;
+    corr_type = 9;
+    nb_r=0;
+
+    // CUTE variables that we need for the calculation
+    np_t sum_wd1,sum_wd2,sum_wd1_2,sum_wd2_2;
+    Catalog cat_dat1, cat_dat2;
+
+    Box3D *boxes_dat1, *boxes_dat2;
+    int *indices_dat1, *indices_dat2;
+    int nfull_dat1, nfull_dat2;
+
+    // assume that pi_max is a whole number and we take 1 Mpc bins
+
+    // Set up a binner object
+    Binner binner;
+    binner.logbin = logtrue;
+    binner.n_logint = r_p_nbins / ndecades;
+    printf("number of logbins is: %d\n", binner.n_logint);
+    binner.dim1_nbin = r_p_nbins;
+    binner.dim2_nbin = pi_max;
+    binner.dim3_nbin = 1;
+    binner.dim1_max = r_p_max;
+    binner.dim2_max = pi_max;
+    binner.dim3_min = 0.08;
+    binner.dim3_max = 0.45;  // this is a dummy bin
+
+    // consistency check and setting more variables
+    process_binner(binner);
+
+    // Set up the histograms for the measurements.
+    histo_t *D1D2=(histo_t *)my_calloc(nb_rt*nb_rl,sizeof(histo_t));
+
+    timer(4);
+
+    set_r_z();
+
+    // Now to create CUTE catalogues with the arrays
+    cat_dat1 = make_cat(ra1, dec1, z1, w1, ngal1,
+                        &sum_wd1, &sum_wd1_2);
+    cat_dat2 = make_cat(ra2, dec2, z2, w2, ngal2,
+                        &sum_wd2, &sum_wd2_2);
+
+    // set up the boxes for pair-counting
+    init_3D_params(cat_dat1,cat_dat2,3);
+
+    boxes_dat1=mk_Boxes3D_from_Catalog(cat_dat1,&indices_dat1,&nfull_dat1);
+    boxes_dat2=mk_Boxes3D_from_Catalog(cat_dat2,&indices_dat2,&nfull_dat2);
+
+    // Where the meat of the crunching happens.
+    // This is the same code as my original edit of CUTE.
+    printf("\n");
+
+    printf(" - Cross-correlating data\n");
+    timer(0);
+
+    cross_3d_ps_bf(nfull_dat1,indices_dat1,
+  		 boxes_dat1,boxes_dat2,D1D2);
+
+    // Fill the output array that the python wrapper gets.
+    // (write_CF used to be called here)
+    int ii;
+    for(ii=0;ii<nb_rt;ii++) {
+      int jj;
+      double rt;
+      if(logtrue) {
+        rt=pow(10,((ii+0.5)-nb_rt)/n_logint+log_rt_max);
+      }
+      else {
+        rt=(ii+0.5)/(nb_rt*i_rt_max);
+      }
+      for(jj=0;jj<nb_rl;jj++) {
+        double rl=(jj+0.5)/(nb_rl*i_rl_max);
+        int ind=jj+nb_rl*ii;
+        output[3 * (ii * pi_max + jj)] = rl;
+        output[3 * (ii * pi_max + jj) + 1] = rt;
+        output[3 * (ii * pi_max + jj) + 2] = D1D2[ind];
+      }
+    }
+
+    printf("*** Cleaning up\n");
+    free_Catalog(cat_dat1);
+    free_Catalog(cat_dat2);
+    free_Boxes3D(n_boxes3D,boxes_dat1);
+    free_Boxes3D(n_boxes3D,boxes_dat2);
+    free(indices_dat1);
+    free(indices_dat2);
+    end_r_z();
+    free(D1D2);
 }

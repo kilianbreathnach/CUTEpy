@@ -35,12 +35,14 @@ static inline int r2bin(double r2)
   int ir;
 
   if(logbin) {
-    if(r2>0)
+    if(r2>0) {
       ir=(int)(n_logint*(0.5*log10(r2)-log_r_max)+nb_r);
+    }
     else
       ir=-1;
   }
   else {
+
     ir=(int)(sqrt(r2)*i_r_max*nb_r);
   }
 
@@ -52,8 +54,9 @@ static inline int rt2bin(double rt2)
   int irt;
 
   if(logbin) {
-    if(rt2>0)
+    if(rt2>0) {
       irt=(int)(n_logint*(0.5*log10(rt2)-log_rt_max)+nb_rt);
+    }
     else
       irt=-1;
   }
